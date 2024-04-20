@@ -145,7 +145,7 @@ int main()
                     uart_puts("Unable to query!\n");
                 }
             }
-            else if (is_set_baudrate(buffer))
+            else if (is_command(buffer, "uart baudrate"))
             {
                 uart_puts("Select a baudrate to config\n");
                 uart_puts("1. 9600\n");
@@ -204,7 +204,6 @@ int main()
             result = -1;
             buffer[--index] = '\0';
             uart_puts("\b \b");
-            // uart_sendc(index + '0');
         }
         else if (c == 9)
         {
@@ -212,14 +211,25 @@ int main()
             {
                 result = 0;
             }
-            // uart_sendc(result);
             result = auto_complete(buffer, result);
-            index = 0;
-            while (options[result][index] != '\0')
+            if (result != -1)
             {
-                index++;
+                index = 0;
+                while (options[result][index] != '\0')
+                {
+                    index++;
+                }
+                uart_puts_clear_line(options[result]);
             }
-            uart_puts_clear_line(options[result]);
+            else
+            {
+                uart_puts("\nNo matching commands! Please type help to see available commands\n");
+                while (index > 0)
+                {
+                    buffer[--index] = '\0';
+                }
+                uart_display_os();
+            }
         }
         else if (c != 8 && c != 127)
         {

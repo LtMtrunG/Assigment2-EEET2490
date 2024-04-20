@@ -260,77 +260,24 @@ int is_color(char *prompt, const char *color)
     return 1;
 }
 
-int is_clear(char *prompt)
-{
-    const char *command = "clear";
-    while (*prompt != '\0' && *command != '\0')
-    {
-        if (*prompt != *command)
-        {
-            return 0;
-        }
-        prompt++;
-        command++;
-    }
-    if (*prompt != '\0')
-    {
-        return 0;
-    }
-    return 1;
-}
-
-
-int is_showinfo(char *prompt)
-{
-    const char *command = "clear";
-    while (*prompt != '\0' && *command != '\0')
-    {
-        if (*prompt != *command)
-        {
-            return 0;
-        }
-        prompt++;
-        command++;
-    }
-    if (*prompt != '\0')
-    {
-        return 0;
-    }
-    return 1;
-}
-
 int auto_complete(char *prompt, int index)
 {
+    int temp = index;
     while (1)
     {
-        index++;
-        if (index == num_options)
+        temp++;
+        if (temp == num_options)
         {
-            index = 0;
+            temp = 0;
         }
-        if (is_command_match(prompt, options[index]))
+        if (temp == index) {
+            return -1;
+        }
+        if (is_command(prompt, options[temp]))
         {
-            return index;
+            return temp;
         }
     }
-}
-
-int is_command_match(char *prompt, char *command)
-{
-    while (*prompt != '\0' && *command != '\0')
-    {
-        if (*prompt != *command)
-        {
-            return 0;
-        }
-        prompt++;
-        command++;
-    }
-    if (*prompt != '\0')
-    {
-        return 0;
-    }
-    return 1;
 }
 
 int total_words(char *prompt)
@@ -345,19 +292,4 @@ int total_words(char *prompt)
         prompt++;
     }
     return ans;
-}
-
-int is_set_baudrate(char *prompt)
-{
-    const char *command = "uart baudrate";
-    while (*prompt != '\0' && *command != '\0')
-    {
-        if (*prompt != *command)
-        {
-            return 0;
-        }
-        prompt++;
-        command++;
-    }
-    return 1;
 }
