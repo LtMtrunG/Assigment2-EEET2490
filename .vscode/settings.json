@@ -1,3 +1,13 @@
 {
-    "C_Cpp.errorSquiggles": "disabled"
+    "C_Cpp.errorSquiggles": "disabled",
+    "files.associations": {
+        "stdio.h": "c",
+        "_stdio.h": "c",
+        "mbox.h": "c",
+        "cstdio": "c",
+        "stdarg.h": "c",
+        "stddef.h": "c",
+        "libc-header-start.h": "c"
+    },
+    "cmake.configureOnOpen": true
 }

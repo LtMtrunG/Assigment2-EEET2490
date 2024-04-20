@@ -3,37 +3,33 @@
 #include "uart.h"
 #include "promptProcess.h"
 
-void main()
+#define MAX_LENGTH 100
+int uart_t_color = 5;
+int uart_b_color = 7;
+
+int main()
 {
     // set up serial console
-    uart_init();
+    uart_init(115200, 8);
+    uart_set_t_color();
+    uart_set_b_color();
     // say hello
     uart_clear_screen();
     uart_display_welcome_screen();
     uart_display_os();
 
-    // mBuf[0] = 16 * 4;        // Message Buffer Size in bytes (8 elements * 4 bytes (32 bit) each)
-    // mBuf[1] = MBOX_REQUEST; // Message Request Code (this is a request message)
-    // mBuf[2] = 0x00000001;   // TAG Identifier: Get clock rate
-    // mBuf[3] = 4;            // Value buffer size in bytes (max of request and response lengths)
-    // mBuf[4] = 0;            // REQUEST CODE = 0
-    // mBuf[5] = 0;            // clock id: ARM system clock
-    // mBuf[6] = 0;            // clear output buffer (response data are mBuf[5] & mBuf[6])
-
-    // mBuf[7] = 0x00010001;   // TAG Identifier: Get clock rate
-    // mBuf[8] = 4;            // Value buffer size in bytes (max of request and response lengths)
-    // mBuf[9] = 0;            // REQUEST CODE = 0
-    // mBuf[10] = 0;            // clear output buffer (response data are mBuf[5] & mBuf[6])
-
     char buffer[100]; // Buffer to store the input line
     int index = 0;    // Index to keep track of the current position in the buffer
     char previous_key = '\0';
     int result = -1;
+    int flag = 0;
 
     while (1)
     {
         // read each char
         char c = uart_getc();
+        // uart_set_b_color();
+
         uart_sendc(c);
 
         if (c == '\n') // Check if Enter key is pressed
@@ -87,13 +83,99 @@ void main()
             }
             else if (is_setcolor(buffer))
             {
-                int set_t_color = 0;
-                int set_b_color = 0;
+                if (check_format(buffer))
+                {
+                    if (prompt_b_color != -1)
+                    {
+                        uart_b_color = prompt_b_color;
+                        uart_set_b_color();
+                    }
+                    if (prompt_t_color != -1)
+                    {
+                        uart_t_color = prompt_t_color;
+                        uart_set_t_color();
+                    }
+                }
+                else
+                {
+                    uart_puts("Wrong format! Type help setcolor to see more information\n");
+                }
             }
-            else if (is_clear(buffer))
+            else if (is_command(buffer, "clear"))
             {
                 uart_clear_screen();
             }
+            else if (is_command(buffer, "showinfo"))
+            {
+                // mailbox data buffer: Read ARM frequency
+                mBuf[0] = 12 * 4;       // Message Buffer Size in bytes (8 elements * 4 bytes (32 bit) each)
+                mBuf[1] = MBOX_REQUEST; // Message Request Code (this is a request message)
+
+                mBuf[2] = 0x00010002; // TAG Identifier: Get clock rate
+                mBuf[3] = 4;          // Value buffer size in bytes (max of request and response lengths)
+                mBuf[4] = 0;          // REQUEST CODE = 0
+                mBuf[5] = 0;          // clear output buffer (response data are mBuf[5])
+
+                mBuf[6] = 0x00010003; // TAG Identifier: Get firmware revision
+                mBuf[7] = 6;          // Value buffer size in bytes (max of request and response lengths)
+                mBuf[8] = 0;          // REQUEST CODE = 0
+                mBuf[9] = 0;          // clear output buffer (response data are mBuf[9])
+                mBuf[10] = 0;         // clear output buffer (response data are mBuf[9])
+
+                mBuf[11] = MBOX_TAG_LAST;
+                if (mbox_call(ADDR(mBuf), MBOX_CH_PROP))
+                {
+                    uart_puts("\nResponse Code for whole message: ");
+                    uart_hex(mBuf[1]);
+
+                    uart_puts("\n+ Response Code in Message TAG: ");
+                    uart_hex(mBuf[4]);
+                    uart_puts("\nDATA: Board Revision = ");
+                    uart_hex(mBuf[5]);
+
+                    uart_puts("\n+ Response Code in Message TAG: ");
+                    uart_hex(mBuf[8]);
+                    uart_puts("\nDATA: Board MAC Address = ");
+                    uart_mac_address_hex(mBuf[9], mBuf[10]);
+
+                    uart_puts("\n");
+                }
+                else
+                {
+                    uart_puts("Unable to query!\n");
+                }
+            }
+            else if (is_set_baudrate(buffer))
+            {
+                uart_puts("Select a baudrate to config\n");
+                uart_puts("1. 9600\n");
+                uart_puts("2. 19200\n");
+                uart_puts("3. 38400\n");
+                uart_puts("4. 57600\n");
+                uart_puts("5. 115200\n");
+                uart_puts("Enter your choice: ");
+                flag = 1;
+            }
+            else if (flag == 1)
+            {
+                if (uart_set_baudrate(buffer))
+                {
+                    flag = 0;
+                }
+            }
+            // else if (is_command(buffer, "uart databits"))
+            // {
+            //     uart_puts("Select a number to config (5, 6, 7, 8)\n");
+            //     uart_puts("Enter your choice: ");
+            //     flag = 2;
+            // }
+            // else if (flag == 2)
+            // {
+            //     if (uart_set_data_bits(buffer))
+            //     {
+            //         flag = 0;
+            //     }
+            // }
             else
             {
                 uart_puts("Invalid command! Type help to see available commands\n");
@@ -103,7 +185,10 @@ void main()
                 buffer[i] = '\0';
             }
             index = 0;
-            uart_display_os();
+            if (!flag)
+            {
+                uart_display_os();
+            }
         }
         else if ((c == 8 || c == 127) && index > 0)
         { // Handle delete/backspace character
@@ -143,184 +228,5 @@ void main()
         } // Store the character in the buffer
         previous_key = c;
     }
-}
-
-void get_firmware_revision()
-{
-    // mailbox data buffer: Read ARM frequency
-    mBuf[0] = 8 * 4;        // Message Buffer Size in bytes (8 elements * 4 bytes (32 bit) each)
-    mBuf[1] = MBOX_REQUEST; // Message Request Code (this is a request message)
-    mBuf[2] = 0x00000001;   // TAG Identifier: Get clock rate
-    mBuf[3] = 4;            // Value buffer size in bytes (max of request and response lengths)
-    mBuf[4] = 0;            // REQUEST CODE = 0
-    mBuf[5] = 0;            // clock id: ARM system clock
-    mBuf[6] = 0;            // clear output buffer (response data are mBuf[5] & mBuf[6])
-    mBuf[7] = MBOX_TAG_LAST;
-    if (mbox_call(ADDR(mBuf), MBOX_CH_PROP))
-    {
-        uart_puts("Response Code for whole message: ");
-        uart_hex(mBuf[1]);
-        uart_puts("\n");
-        uart_puts("Response Code in Message TAG: ");
-        uart_hex(mBuf[4]);
-        uart_puts("\n");
-        uart_puts("DATA: Firmware revision = ");
-        uart_dec(mBuf[6]);
-        uart_puts("\n");
-        uart_puts("\n");
-    }
-    else
-    {
-        uart_puts("Unable to query!\n");
-    }
-}
-
-void get_board_model()
-{
-    // mailbox data buffer: Read ARM frequency
-    mBuf[0] = 8 * 4;        // Message Buffer Size in bytes (8 elements * 4 bytes (32 bit) each)
-    mBuf[1] = MBOX_REQUEST; // Message Request Code (this is a request message)
-    mBuf[2] = 0x00010001;   // TAG Identifier: Get clock rate
-    mBuf[3] = 4;            // Value buffer size in bytes (max of request and response lengths)
-    mBuf[4] = 0;            // REQUEST CODE = 0
-    mBuf[5] = 0;            // clock id: ARM system clock
-    mBuf[6] = 0;            // clear output buffer (response data are mBuf[5] & mBuf[6])
-    mBuf[7] = MBOX_TAG_LAST;
-    if (mbox_call(ADDR(mBuf), MBOX_CH_PROP))
-    {
-        uart_puts("Response Code for whole message: ");
-        uart_hex(mBuf[1]);
-        uart_puts("\n");
-        uart_puts("Response Code in Message TAG: ");
-        uart_hex(mBuf[4]);
-        uart_puts("\n");
-        uart_puts("DATA: Board model = ");
-        uart_dec(mBuf[6]);
-        uart_puts("\n");
-        uart_puts("\n");
-    }
-    else
-    {
-        uart_puts("Unable to query!\n");
-    }
-}
-
-void get_board_revision()
-{
-    // mailbox data buffer: Read ARM frequency
-    mBuf[0] = 8 * 4;        // Message Buffer Size in bytes (8 elements * 4 bytes (32 bit) each)
-    mBuf[1] = MBOX_REQUEST; // Message Request Code (this is a request message)
-    mBuf[2] = 0x00010002;   // TAG Identifier: Get clock rate
-    mBuf[3] = 4;            // Value buffer size in bytes (max of request and response lengths)
-    mBuf[4] = 0;            // REQUEST CODE = 0
-    mBuf[5] = 0;            // clock id: ARM system clock
-    mBuf[6] = 0;            // clear output buffer (response data are mBuf[5] & mBuf[6])
-    mBuf[7] = MBOX_TAG_LAST;
-    if (mbox_call(ADDR(mBuf), MBOX_CH_PROP))
-    {
-        uart_puts("Response Code for whole message: ");
-        uart_hex(mBuf[1]);
-        uart_puts("\n");
-        uart_puts("Response Code in Message TAG: ");
-        uart_hex(mBuf[4]);
-        uart_puts("\n");
-        uart_puts("DATA: Board revision = ");
-        uart_hex(mBuf[6]);
-        uart_puts("\n");
-        uart_puts("\n");
-    }
-    else
-    {
-        uart_puts("Unable to query!\n");
-    }
-}
-
-void get_board_MACAddress()
-{
-    // mailbox data buffer: Read ARM frequency
-    mBuf[0] = 8 * 4;        // Message Buffer Size in bytes (8 elements * 4 bytes (32 bit) each)
-    mBuf[1] = MBOX_REQUEST; // Message Request Code (this is a request message)
-    mBuf[2] = 0x00010003;   // TAG Identifier: Get clock rate
-    mBuf[3] = 6;            // Value buffer size in bytes (max of request and response lengths)
-    mBuf[4] = 0;            // REQUEST CODE = 0
-    mBuf[5] = 0;            // clock id: ARM system clock
-    mBuf[6] = 0;            // clear output buffer (response data are mBuf[5] & mBuf[6])
-    mBuf[7] = MBOX_TAG_LAST;
-    if (mbox_call(ADDR(mBuf), MBOX_CH_PROP))
-    {
-        uart_puts("Response Code for whole message: ");
-        uart_hex(mBuf[1]);
-        uart_puts("\n");
-        uart_puts("Response Code in Message TAG: ");
-        uart_hex(mBuf[4]);
-        uart_puts("\n");
-        uart_puts("DATA: Board MAC address = ");
-        uart_hex(mBuf[6]);
-        uart_puts("\n");
-        uart_puts("\n");
-    }
-    else
-    {
-        uart_puts("Unable to query!\n");
-    }
-}
-
-void get_board_serial()
-{
-    // mailbox data buffer: Read ARM frequency
-    mBuf[0] = 8 * 4;        // Message Buffer Size in bytes (8 elements * 4 bytes (32 bit) each)
-    mBuf[1] = MBOX_REQUEST; // Message Request Code (this is a request message)
-    mBuf[2] = 0x00010004;   // TAG Identifier: Get clock rate
-    mBuf[3] = 6;            // Value buffer size in bytes (max of request and response lengths)
-    mBuf[4] = 0;            // REQUEST CODE = 0
-    mBuf[5] = 0;            // clock id: ARM system clock
-    mBuf[6] = 0;            // clear output buffer (response data are mBuf[5] & mBuf[6])
-    mBuf[7] = MBOX_TAG_LAST;
-    if (mbox_call(ADDR(mBuf), MBOX_CH_PROP))
-    {
-        uart_puts("Response Code for whole message: ");
-        uart_hex(mBuf[1]);
-        uart_puts("\n");
-        uart_puts("Response Code in Message TAG: ");
-        uart_hex(mBuf[4]);
-        uart_puts("\n");
-        uart_puts("DATA: Board serial = ");
-        uart_dec(mBuf[6]);
-        uart_puts("\n");
-        uart_puts("\n");
-    }
-    else
-    {
-        uart_puts("Unable to query!\n");
-    }
-}
-
-void get_clockrate()
-{
-    // mailbox data buffer: Read ARM frequency
-    mBuf[0] = 8 * 4;        // Message Buffer Size in bytes (8 elements * 4 bytes (32 bit) each)
-    mBuf[1] = MBOX_REQUEST; // Message Request Code (this is a request message)
-    mBuf[2] = 0x00030002;   // TAG Identifier: Get clock rate
-    mBuf[3] = 8;            // Value buffer size in bytes (max of request and response lengths)
-    mBuf[4] = 0;            // REQUEST CODE = 0
-    mBuf[5] = 3;            // clock id: ARM system clock
-    mBuf[6] = 0;            // clear output buffer (response data are mBuf[5] & mBuf[6])
-    mBuf[7] = MBOX_TAG_LAST;
-    if (mbox_call(ADDR(mBuf), MBOX_CH_PROP))
-    {
-        uart_puts("Response Code for whole message: ");
-        uart_hex(mBuf[1]);
-        uart_puts("\n");
-        uart_puts("Response Code in Message TAG: ");
-        uart_hex(mBuf[4]);
-        uart_puts("\n");
-        uart_puts("DATA: ARM clock rate = ");
-        uart_dec(mBuf[6]);
-        uart_puts("\n");
-        uart_puts("\n");
-    }
-    else
-    {
-        uart_puts("Unable to query!\n");
-    }
+    return 1;
 }

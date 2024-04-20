@@ -1,29 +1,31 @@
 // -----------------------------------uart.c -------------------------------------
 #include "uart.h"
 #include "gpio.h"
-//#include "promptProcess.h"
+
+// #include "promptProcess.h"
 
 /**
  * Set baud rate and characteristics (115200 8N1) and map to GPIO
  */
-void uart_init()
+void uart_init(unsigned int baud_rate, int data_bit)
 {
     unsigned int r;
-    /* initialize UART */
-    AUX_ENABLE |= 1;   // enable mini UART (UART1)
-    AUX_MU_CNTL = 0;   // stop transmitter and receiver
-    AUX_MU_LCR = 3;    // 8-bit mode (also enable bit 1 to be used for RBP3)
-    AUX_MU_MCR = 0;    // clear RTS (request to send)
-    AUX_MU_IER = 0;    // disable interrupts
-    AUX_MU_IIR = 0xc6; // enable and clear FIFOs
-    AUX_MU_BAUD = 270; // configure 115200 baud [system_clk_freq/(baud_rate*8) - 1]
-    /* map UART1 to GPIO pins 14 and 15 */
+
+    /* Turn off UART0 */
+    UART0_CR = 0x0;
+
+    /* Setup GPIO pins 14 and 15 */
+
+    /* Set GPIO14 and GPIO15 to be pl011 TX/RX which is ALT0	*/
     r = GPFSEL1;
-    r &= ~((7 << 12) | (7 << 15)); // clear bits 17-12 (FSEL15, FSEL14)
-    r |= (2 << 12) | (2 << 15);    // set value 2 (select ALT5: TXD1/RXD1)
+    r &= ~((7 << 12) | (7 << 15));      // clear bits 17-12 (FSEL15, FSEL14)
+    r |= (0b100 << 12) | (0b100 << 15); // Set value 0b100 (select ALT0: TXD0/RXD0)
     GPFSEL1 = r;
+
     /* enable GPIO 14, 15 */
+#ifdef RPI3    // RPI3
     GPPUD = 0; // No pull up/down control
+    // Toogle clock to flush GPIO setup
     r = 150;
     while (r--)
     {
@@ -34,52 +36,172 @@ void uart_init()
     while (r--)
     {
         asm volatile("nop");
-    }                // waiting 150 cycles
-    GPPUDCLK0 = 0;   // flush GPIO setup
-    AUX_MU_CNTL = 3; // enable transmitter and receiver (Tx, Rx)
+    }              // waiting 150 cycles
+    GPPUDCLK0 = 0; // flush GPIO setup
+
+#else // RPI4
+    r = GPIO_PUP_PDN_CNTRL_REG0;
+    r &= ~((3 << 28) | (3 << 30)); // No resistor is selected for GPIO 14, 15
+    GPIO_PUP_PDN_CNTRL_REG0 = r;
+#endif
+
+    /* Mask all interrupts. */
+    UART0_IMSC = 0;
+
+    /* Clear pending interrupts. */
+    UART0_ICR = 0x7FF;
+
+    /* Set integer & fractional part of Baud rate
+    Divider = UART_CLOCK/(16 * Baud)
+    Default UART_CLOCK = 48MHz (old firmware it was 3MHz);
+    Integer part register UART0_IBRD  = integer part of Divider
+    Fraction part register UART0_FBRD = (Fractional part * 64) + 0.5 */
+
+    float baudrate_divisor = (float)48000000 / (16 * baud_rate);
+    int integer_part = (int)baudrate_divisor;
+    int fraction_part = (int)((float)(baudrate_divisor - integer_part) * 64 + 0.5);
+    // 115200 baud
+    UART0_IBRD = integer_part;
+    UART0_FBRD = fraction_part;
+
+    /* Set up the Line Control Register */
+    /* Enable FIFO */
+    /* Set length to 8 bit */
+    /* Defaults for other bit are No parity, 1 stop bit */
+    if (data_bit == 5)
+    {
+        UART0_LCRH = UART0_LCRH_FEN | UART0_LCRH_WLEN_5BIT;
+    }
+    else if (data_bit == 6)
+    {
+        UART0_LCRH = UART0_LCRH_FEN | UART0_LCRH_WLEN_6BIT;
+    }
+    else if (data_bit == 7)
+    {
+        UART0_LCRH = UART0_LCRH_FEN | UART0_LCRH_WLEN_7BIT;
+    }
+    else if (data_bit == 8)
+    {
+        UART0_LCRH = UART0_LCRH_FEN | UART0_LCRH_WLEN_8BIT;
+    }
+
+    /* Enable UART0, receive, and transmit */
+    UART0_CR = 0x301; // enable Tx, Rx, FIFO
 }
+
+/* Configure word length */
+void data_bits_configuration(int data_bits)
+{
+    // Clear the word length bits in LCRH
+    UART0_LCRH &= ~UART0_LCRH_WLEN_CLR;
+
+    // Set the appropriate word length based on the input
+    switch (data_bits)
+    {
+    case 5:
+        UART0_LCRH |= UART0_LCRH_WLEN_5BIT;
+        break;
+    case 6:
+        UART0_LCRH |= UART0_LCRH_WLEN_6BIT;
+        break;
+    case 7:
+        UART0_LCRH |= UART0_LCRH_WLEN_7BIT;
+        break;
+    case 8:
+        UART0_LCRH |= UART0_LCRH_WLEN_8BIT;
+        break;
+    }
+}
+
+int uart_set_baudrate(char *s)
+{
+    int baudrate = 0;
+
+    // Convert the string to an integer manually
+    while (*s != '\0')
+    {
+        if (!(*s >= '0' && *s <= '9'))
+        {
+            // If any character is not a digit, return false
+            uart_puts("Invalid choice\n");
+            uart_puts("Enter another choice: ");
+            return 0;
+        }
+        baudrate = baudrate * 10 + (*s - '0');
+        s++;
+    }
+
+    switch (baudrate)
+    {
+    case 1:
+        uart_init(9600, 6);
+        break;
+    case 2:
+        uart_init(19200, 6);
+        break;
+    case 3:
+        uart_init(38400, 6);
+        break;
+    case 4:
+        uart_init(57600, 6);
+        break;
+    case 5:
+        uart_init(115200, 6);
+        break;
+
+    default:
+        uart_puts("Invalid choice\n");
+        uart_puts("Enter another choice: ");
+        return 0;
+    }
+
+    return 1;
+}
+
 /**
  * Send a character
  */
 void uart_sendc(char c)
 {
-    // wait until transmitter is empty
+    /* Check Flags Register */
+    /* And wait until transmitter is not full */
     do
     {
         asm volatile("nop");
-    } while (!(AUX_MU_LSR & 0x20));
-    // write the character to the buffer
-    AUX_MU_IO = c;
+    } while (UART0_FR & UART0_FR_TXFF);
+
+    /* Write our data byte out to the data register */
+    UART0_DR = c;
 }
+
 /**
  * Receive a character
  */
 char uart_getc()
 {
-    char c;
-    // wait until data is ready (one symbol)
+    char c = 0;
+
+    /* Check Flags Register */
+    /* Wait until Receiver is not empty
+     * (at least one byte data in receive fifo)*/
     do
     {
         asm volatile("nop");
-    } while (!(AUX_MU_LSR & 0x01));
-    // read it and return
-    c = (unsigned char)(AUX_MU_IO);
-    // convert carriage return to newline character
+    } while (UART0_FR & UART0_FR_RXFE);
+
+    /* read it and return */
+    c = (unsigned char)(UART0_DR);
+
+    /* convert carriage return to newline */
     return (c == '\r' ? '\n' : c);
 }
+
 /**
  * Display a string
  */
-//void uart_puts(char *s, char *t_color, char *b_color)
+// void uart_puts(char *s, char *t_color, char *b_color)
 void uart_puts(char *s)
 {
-    char *color = ANSI_COLOR_BG_BLUE;
-    while (*color) 
-    {
-        if (*color == '\n')
-            uart_sendc('\r');
-        uart_sendc(*color++);
-    }
     while (*s)
     {
         // convert newline to carriage return + newline
@@ -105,6 +227,43 @@ void uart_hex(unsigned int num)
         uart_sendc(digit);
     }
 }
+
+/**
+ * Display a value in hexadecimal format
+ */
+void uart_mac_address_hex(unsigned int address1, unsigned int address2)
+{
+    int cnt = 0;
+    for (int pos = 14; pos >= 0; pos = pos - 4)
+    {
+        // Get highest 4-bit nibble
+        char digit = (address2 >> pos) & 0xF;
+        /* Convert to ASCII code */
+        // 0-9 => '0'-'9', 10-15 => 'A'-'F'
+        digit += (digit > 9) ? (-10 + 'A') : '0';
+        uart_sendc(digit);
+        cnt++;
+        if (cnt % 2 == 0)
+        {
+            uart_sendc(':');
+        }
+    }
+    for (int pos = 28; pos >= 0; pos = pos - 4)
+    {
+        // Get highest 4-bit nibble
+        char digit = (address1 >> pos) & 0xF;
+        /* Convert to ASCII code */
+        // 0-9 => '0'-'9', 10-15 => 'A'-'F'
+        digit += (digit > 9) ? (-10 + 'A') : '0';
+        uart_sendc(digit);
+        cnt++;
+        if (cnt % 2 == 0 && cnt <= 10)
+        {
+            uart_sendc(':');
+        }
+    }
+}
+
 /**
  * Display a value in decimal format
  */
@@ -164,6 +323,7 @@ void uart_clear_screen()
 
 void uart_display_os()
 {
+    uart_sendc('\r');
     uart_puts("CloudOS> ");
 }
 
@@ -193,38 +353,80 @@ void uart_puts_clear_line(char *s)
         s++;
     }
 }
-/*
-void uart_process_prompt(char *prompt, int size)
+
+void uart_set_t_color()
 {
-    if (is_help(prompt))
+    switch (uart_t_color)
     {
-        if (size == 4)
-        {
-            uart_puts("List of available commands:\n");
-            uart_puts("clear\n");
-            uart_puts("setcolor\n   -t <text color>\n   -t <background color>\n");
-            uart_puts("showinfo\n");
-            uart_puts("\n");
-            uart_puts("For more information on a specific command, type help command-name");
-        }
-        else if (is_help_clear(prompt))
-        {
-            uart_puts("clear            clear the screen and bring the command line on top of the terminal\n");
-        }
-        else if (is_help_setcolor(prompt))
-        {
-            uart_puts("setcolor         set text color, and/or background color of the console to one of the following colors: black, red, green, yellow, blue, purple, cyan, white\n");
-        }
-        else if (is_help_showinfo(prompt))
-        {
-            uart_puts("showinfo         show board revision and board MAC address in correct format/ meaningful information\n");
-        }
-        else
-        {
-            uart_puts("Invalid command! Type help to see available commands\n");
-        }
-    } else
-    {
-        uart_puts("Invalid command!");
+    case 0:
+        uart_puts(ANSI_COLOR_FG_BLACK);
+        break;
+
+    case 1:
+        uart_puts(ANSI_COLOR_FG_RED);
+        break;
+
+    case 2:
+        uart_puts(ANSI_COLOR_FG_GREEN);
+        break;
+
+    case 3:
+        uart_puts(ANSI_COLOR_FG_YELLOW);
+        break;
+
+    case 4:
+        uart_puts(ANSI_COLOR_FG_BLUE);
+        break;
+
+    case 5:
+        uart_puts(ANSI_COLOR_FG_MAGENTA);
+        break;
+
+    case 6:
+        uart_puts(ANSI_COLOR_FG_CYAN);
+        break;
+
+    default:
+        uart_puts(ANSI_COLOR_FG_WHITE);
+        break;
     }
-}*/
+}
+
+void uart_set_b_color()
+{
+    switch (uart_b_color)
+    {
+    case 0:
+        uart_puts(ANSI_COLOR_BG_BLACK);
+        break;
+
+    case 1:
+        uart_puts(ANSI_COLOR_BG_RED);
+        break;
+
+    case 2:
+        uart_puts(ANSI_COLOR_BG_GREEN);
+        break;
+
+    case 3:
+        uart_puts(ANSI_COLOR_BG_YELLOW);
+        break;
+
+    case 4:
+        uart_puts(ANSI_COLOR_BG_BLUE);
+        break;
+
+    case 5:
+        uart_puts(ANSI_COLOR_BG_MAGENTA);
+        break;
+
+    case 6:
+        uart_puts(ANSI_COLOR_BG_CYAN);
+        break;
+
+    default:
+        uart_puts(ANSI_COLOR_BG_WHITE);
+        break;
+    }
+    uart_puts("\e[K");
+}

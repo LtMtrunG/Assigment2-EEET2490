@@ -4,7 +4,7 @@ CFILES = $(wildcard ./src/*.c)
 OFILES = $(CFILES:./src/%.c=./build/%.o)
 GCCFLAGS = -Wall -O2 -ffreestanding -nostdinc -nostdlib
 
-all: clean kernel8.img 
+all: clean kernel8.img run
 
 # uart1_build: ./src/uart.c
 # 	aarch64-none-elf-gcc $(GCCFLAGS) -c ./src/uart.c -o ./build/uart.o
@@ -23,6 +23,6 @@ clean:
 	rm -f .\build\kernel8.elf .\build\*.o *.img
 
 run: 
-	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio
+	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial stdio
 	
 test: all run
