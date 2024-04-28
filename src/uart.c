@@ -112,23 +112,23 @@ void uart_init()
 
 int uart_set_baudrate(char *s)
 {
-    //int baudrate_prompt = is_number(s); // Convert prompt to number
+    int baudrate_prompt = is_number(s); // Convert prompt to number
 
-    switch (*s)
+    switch (baudrate_prompt)
     {
-    case '1': // Set baud rate variable to 9600
+    case 1: // Set baud rate variable to 9600
         baudrate = 9600;
         break;
-    case '2': // Set baud rate variable to 19200
+    case 2: // Set baud rate variable to 19200
         baudrate = 19200;
         break;
-    case '3': // Set baud rate variable to 38400
+    case 3: // Set baud rate variable to 38400
         baudrate = 38400;
         break;
-    case '4': // Set baud rate variable to 57600
+    case 4: // Set baud rate variable to 57600
         baudrate = 57600;
         break;
-    case '5': // Set baud rate variable to 115200
+    case 5: // Set baud rate variable to 115200
         baudrate = 115200;
         break;
 

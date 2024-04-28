@@ -302,7 +302,10 @@ int main()
         }
         else //Any other characters 
         {
-            result = -1;
+            if (result != -1) {
+                index = copy_command(buffer, options[result]);
+                result = -1;
+            }
             buffer[index++] = c;
         } // Store the character in the buffer
         previous_key = c;
