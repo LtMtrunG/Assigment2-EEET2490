@@ -42,11 +42,13 @@
 #define UART0_LCRH	(* (volatile unsigned int*)(UART0_BASE + 0x2C))
 #define UART0_LCRH_SPS	(1<<7)	/* SPS = Stick Parity Select (0=disabled) */
 				/* WLEN = word length 00=5, 01=6, 10=7, 11=8 */
-#define UART0_LCRH_WLEN_5BIT	(0<<5)
-#define UART0_LCRH_WLEN_6BIT	(1<<5)
-#define UART0_LCRH_WLEN_7BIT	(2<<5)
-#define UART0_LCRH_WLEN_8BIT	(3<<5)
+#define UART0_LCRH_WLEN_CLR		(3<<5)
+#define UART0_LCRH_WLEN_5BIT	(0b00<<5)
+#define UART0_LCRH_WLEN_6BIT	(0b01<<5)
+#define UART0_LCRH_WLEN_7BIT	(0b10<<5)
+#define UART0_LCRH_WLEN_8BIT	(0b11<<5)
 #define UART0_LCRH_FEN	(1<<4)	/* FEN = enable FIFOs */
+#define UART0_LCRH_CTP	(1<<3)	/* CTP  = clear stop bit */
 #define UART0_LCRH_STP2	(1<<3)	/* STP2 = enable 2 stop bits */
 #define UART0_LCRH_EPS	(1<<2)	/* EPS  = even parity select */
 #define UART0_LCRH_PEN	(1<<1)	/* PEN  = parity enable */
@@ -146,8 +148,7 @@
 #define UART0_ITOP	(* (volatile unsigned int*)(UART0_BASE + 0x88))
 /* TDR = Test Data Register */
 #define UART0_TDR	(* (volatile unsigned int*)(UART0_BASE + 0x8C))
-
-#define UART0_LCRH_WLEN_CLR		(3<<5)
+#define UART0_DR_PE (1<<9)
 
 #define UART
 
@@ -191,11 +192,15 @@ extern int uart_t_color;
 extern int uart_b_color;
 extern int baudrate;
 extern int data_bits;
+extern int stop_bits;
+extern char parity;
 
 #endif 
 
+typedef unsigned int        uint32_t;
+
 /* Function prototypes */
-void uart_init(unsigned int baud_rate, int data_bit);
+void uart_init();
 void uart_sendc(char c);
 char uart_getc();
 void uart_puts(char *s);
@@ -208,13 +213,20 @@ void uart_display_os();
 //void uart_process_prompt(char *prompt, int size);
 void uart_puts_clear_line(char *s);
 
+void uart_display_command_list();
+void uart_display_command_detail(int command);
+
 void uart_set_t_color();
 void uart_set_b_color();
 
 int uart_set_baudrate(char *s);
+int uart_set_data_bits(char *s);
+int uart_set_stop_bits(char *s);
+int uart_set_parity(char *s);
+int uart_set_handshaking(char *s);
+int is_number(char *s);
 
-void data_bits_configuration(int data_bits);
-
+void uart_print_board_revision(uint32_t revision);
 void uart_mac_address_hex(unsigned int address1, unsigned int address2);
 
 

@@ -7,7 +7,9 @@
         "cstdio": "c",
         "stdarg.h": "c",
         "stddef.h": "c",
-        "libc-header-start.h": "c"
+        "libc-header-start.h": "c",
+        "promptprocess.h": "c",
+        "gpio.h": "c"
     },
     "cmake.configureOnOpen": true
 }
